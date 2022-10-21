@@ -1,0 +1,11 @@
+{
+  "tasks": {
+    "title": "Tasks",
+    "index": 100
+  },
+  "tasks/second_task": {
+    "title": "Summary",
+    "view": "vuci-app-second_task",
+    "index": 20
+  }
+}
