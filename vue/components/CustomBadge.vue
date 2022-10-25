@@ -33,9 +33,6 @@ export default {
     barWidth (percentage) {
       return `width: ${percentage}%`
     }
-  },
-  created () {
-    console.log(this.percentageBar)
   }
 }
 </script>
