@@ -28,7 +28,7 @@ export default {
     checkBoxProps () {
       return this.filters.map((filter) => {
         return {
-          value: this.redesignedID(filter.id),
+          value: filter.id,
           label: filter.name,
           checked: true
         }
@@ -46,7 +46,7 @@ export default {
   created () {
     this.filters.forEach((filter) => {
       if (filter.isVisible) {
-        this.formState.type.push(this.redesignedID(filter.id))
+        this.formState.type.push(filter.id)
       }
     })
   }

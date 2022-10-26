@@ -35,8 +35,6 @@
 import ButtonGroup from './components/ButtonGroup.vue'
 import FilterForm from './components/FilterForm.vue'
 import CustomCard from './components/CustomCard.vue'
-// import SummaryConfig from './summaryConfig.js'
-import { addToConfig } from './summaryConfig.js'
 
 export default {
   components: {
@@ -53,7 +51,7 @@ export default {
       repeat: true
     }
   },
-  data() {
+  data () {
     return {
       // data responsible for card creation (what type of data is passed to each card component)
       type: {
@@ -76,37 +74,33 @@ export default {
       filtersArray: [],
       // workaround to display last added network intrf to an end (for further details refer to respective method)
       interfaces: [],
-      testing: {}
-      // default values for filters when information is loaded
-      // defaultStorage: {
-      //   filter_id_lan: SummaryConfig.lan.isVisible,
-      //   filter_id_wan: SummaryConfig.wan.isVisible,
-      //   filter_id_wan6: SummaryConfig.wan6.isVisible,
-      //   filter_id_syslogs: SummaryConfig.syslogs.isVisible,
-      //   filter_id_netlogs: SummaryConfig.netlogs.isVisible
-      // }
+      configSummary: [],
+      updFilters: []
     }
   },
   computed: {
     // this computed prop holds what fetched data should be displayed -> only with isVisiblie prop = true
-    filteredInfo() {
+    filteredInfo () {
       return this.cardInfo.filter((card) => {
         return card.isVisible === true
       })
     },
     // this comp. prop. holds data from store (it contains newest sessionStorage values)
-    storage() {
-      return this.$store.state.filtersStorage
-    },
-    configuration() {}
+    configStorage () {
+      const sections = this.$uci.sections('summary')
+      const visibilityStatus = sections.map((section) => {
+        return { name: section.name, isVisible: section.isVisible }
+      })
+      return visibilityStatus
+    }
   },
   methods: {
-    toggleDrawer() {
+    toggleDrawer () {
       this.drawerVisible = !this.drawerVisible
     },
     // FILTERING LOGIC ===============================================================
     // this method responsible for setting options in drawer, not filtering itself
-    setFilterArray() {
+    setFilterArray () {
       if (this.cardInfo.length > 0) {
         this.filtersArray = this.cardInfo.map((card) => {
           return { name: card.name, isVisible: card.isVisible, id: card.id }
@@ -114,33 +108,61 @@ export default {
       }
     },
     // this method dispatches action to fill storage array with isVisible values
-    setFilterStorage(filters) {
-      this.$store.dispatch('setFiltersStorage', {
-        filters: filters,
-        sStorage: { ...sessionStorage }
+    setFilterStorage (filters) {
+      const configStorage = this.configStorage
+      // looks through configStorage and checks whether any matches to filter
+      // if matched = visibility true and vice versa
+      configStorage.forEach((v) => {
+        filters.find((filter) => {
+          if (v.name === filter) {
+            return (v.isVisible = true)
+          } else {
+            return (v.isVisible = false)
+          }
+        })
       })
+      this.updFilters = []
+      this.updFilters = configStorage
+    },
+    async setConfig (id, visibility) {
+      await this.$uci.load('summary')
+      const sectionCheck = await this.$uci.sections('summary', id)
+      if (sectionCheck[0] !== undefined) {
+      } else {
+        this.$uci.add('summary', id)
+        const sections = this.$uci.sections('summary', id)
+        const sid = sections[0]['.name']
+        this.$uci.set('summary', sid, 'name', `${id}`)
+        this.$uci.set('summary', sid, 'isVisible', `${visibility}`)
+        await this.$uci.save().then(() => {
+          this.$uci.apply()
+        })
+      }
+    },
+    getVisibility (id, extra) {
+      let visibility
+      const section = this.$uci.sections('summary', id)
+      if (section[0] === undefined) {
+        extra ? (visibility = 'true') : (visibility = 'false')
+        return visibility
+      } else {
+        const ssid = section[0]['.name']
+        return (visibility = this.$uci.get('summary', ssid, 'isVisible'))
+      }
     },
     // =============================================================================
     // SYSTEM INFO LOGIC ============================================================
-    async getSystemInfo() {
+    async getSystemInfo () {
       await this.$system
         .getInfo()
-        .then(({ release, localtime, uptime, memory }) => {
-          const id = 'sys'
-          const toConfig = {
-            id: `filter_id_${id}`,
-            name: 'system',
-            isVisible: false
-          } 
-          new addToConfig(toConfig)
-          this.testRun()
-          if (sessionStorage[`filter_id_${id}`] === undefined) {
-            sessionStorage.setItem(`filter_id_${id}`, false)
-          }
+        .then(async ({ release, localtime, uptime, memory }) => {
+          const id = 'system'
+          const visibility = this.getVisibility(id)
+          this.setConfig(id, visibility)
           this.systemInfo = {
             id: id,
             name: 'System',
-            isVisible: this.storage[`filter_id_${id}`] === 'true',
+            isVisible: visibility === 'true',
             extraHeader: {
               content: `CPU Load (${this.cpuPercentage}%)`,
               percentage: this.cpuPercentage
@@ -172,7 +194,7 @@ export default {
           )
         })
     },
-    async update() {
+    async update () {
       await this.$system
         .getInfo()
         .then(({ release, localtime, uptime, memory }) => {
@@ -210,7 +232,7 @@ export default {
         })
     },
     // Method responsible for CPU usage info extraction
-    async getCpuUsage() {
+    async getCpuUsage () {
       await this.$rpc.call('system', 'cpu_time').then((times) => {
         if (!this.lastCPUTime) {
           this.cpuPercentage = 0
@@ -238,45 +260,34 @@ export default {
       })
     },
     // Method responsible for CPU usage info update
-    updateCpuUsage() {
+    updateCpuUsage () {
       this.getCpuUsage()
     },
     // =============================================================================
     // INTERFACE LOGIC =============================================================
-    async getNetworkInfo() {
+    async getNetworkInfo () {
       await this.$network.load().then(() => {
         const interfaces = this.$network.getInterfaces()
-        // this.$store.commit('setInterfaces', this.$network.getInterfaces())
         interfaces.forEach((intrf) => {
           const newIntrfObj = this.setIntrfObj(intrf)
-          new addToConfig({
-            id: `filter_id_${newIntrfObj.id}`,
-            name: newIntrfObj.name,
-            isVisible: newIntrfObj.isVisible
-          })
-          this.testRun()
           if (newIntrfObj.default) {
             this.cardInfo.push(newIntrfObj)
+            this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
           } else {
+            // for new interface also by default - true
+            this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
             this.interfaces.push(newIntrfObj)
           }
         })
       })
     },
-    setIntrfObj(intrf) {
-      if (sessionStorage[`filter_id_${intrf.name}`] === undefined) {
-        sessionStorage.setItem(`filter_id_${intrf.name}`, true)
-      }
+    setIntrfObj (intrf) {
+      const visibility = this.getVisibility(intrf.name, 'extra')
       return {
         id: `${intrf.name}`,
         name: intrf.name,
-        default:
-          intrf.name === 'lan' || intrf.name === 'wan' || intrf.name === 'wan6'
-            ? true
-            : false,
-        // when creating, better access sessionStorage directly
-        // if accessing through storage prop -> at that time there is no commit to store, thus not updated value will be displayed
-        isVisible: sessionStorage[`filter_id_${intrf.name}`] === 'true',
+        default: intrf.name === 'lan' || intrf.name === 'wan' || intrf.name === 'wan6',
+        isVisible: visibility === 'true',
         data: [
           {
             label: { value: 'Type' },
@@ -301,7 +312,7 @@ export default {
     // =============================================================================
     // LOGS LOGIC =============================================================
     // Method responsible for network interface card info extraction
-    setLogData(allLogs, logCardType) {
+    setLogData (allLogs, logCardType) {
       const lastLogs = allLogs.slice(Math.max(allLogs.length - 5, 1))
       let finalLogs = []
       if (logCardType === 'system') {
@@ -325,11 +336,10 @@ export default {
       return finalLogs
     },
     // Method responsible for system log info extraction + handle to display 5 latest
-    async getSystemLogs() {
+    async getSystemLogs () {
       const id = 'syslogs'
-      if (sessionStorage[`filter_id_${id}`] === undefined) {
-        sessionStorage.setItem(`filter_id_${id}`, true)
-      }
+      const visibility = this.getVisibility(id) // cia turetu atsirasti reiksme is config'o
+      this.setConfig(id, visibility)
       // need to push only last 5
       await this.$rpc.call('system', 'syslog').then(({ log }) => {
         const allLogs = log.map((v, i) => {
@@ -339,17 +349,16 @@ export default {
         this.cardInfo.push({
           id: id,
           name: 'Recent system events',
-          isVisible: this.storage[`filter_id_${id}`] === 'true',
+          isVisible: visibility === 'true',
           data: this.setLogData(allLogs, 'system')
         })
       })
     },
     // Method responsible for network log info extraction + handle to display 5 latest
-    async getNetworkLogs() {
+    async getNetworkLogs () {
       const id = 'netlogs'
-      if (sessionStorage[`filter_id_${id}`] === undefined) {
-        sessionStorage.setItem(`filter_id_${id}`, true)
-      }
+      const visibility = this.getVisibility(id) // cia turetu atsirasti reiksme is config'o
+      this.setConfig(id, visibility)
       const allLogs = await this.$rpc
         .ubus('log', 'read_db', { table: 'NETWORK' })
         .then((response) => {
@@ -358,14 +367,14 @@ export default {
       this.cardInfo.push({
         id: id,
         name: 'Recent network events',
-        isVisible: this.storage[`filter_id_${id}`] === 'true',
+        isVisible: visibility === 'true',
         data: this.setLogData(allLogs, 'network')
       })
     },
     // =============================================================================
     // WIRELESS LOGIC ==============================================================
     // Method responsible for wireless cards info extraction
-    async getWireless() {
+    async getWireless () {
       const devices = await this.$wireless.getDevices().then((res) => {
         return res
       })
@@ -378,20 +387,15 @@ export default {
         return res
       })
       wirelessDev.forEach((dev) => {
-        if (sessionStorage[`filter_id_${dev.ssid}`] === undefined) {
-          sessionStorage.setItem(`filter_id_${dev.ssid}`, false)
-        }
         const name =
           dev.frequency > 2500 ? `${dev.ssid} (5GHZ)` : `${dev.ssid} (2.4GHZ)`
-        new addToConfig({
-          id: `filter_id_${dev.ssid}`,
-          name: dev.ssid,
-          isVisible: this.storage[`filter_id_${dev.ssid}`] === 'true'
-        })
+        // Adding 2 times one wireless???
+        const visibility = this.getVisibility(dev.ssid) // cia turetu atsirasti reiksme is config'o, jei nera, tuomet false
+        this.setConfig(dev.ssid, visibility)
         const namedObject = {
           id: dev.ssid,
           name: name,
-          isVisible: this.storage[`filter_id_${dev.ssid}`] === 'true',
+          isVisible: visibility === 'true',
           extraHeader: {
             // hard coded content. Neradau property, kuris pasakytu, ar ijungtas ar ne
             content: 'ON',
@@ -418,23 +422,19 @@ export default {
         }
         this.cardInfo.push(namedObject)
       })
-    },
-    testRun () {
-      const config = require('./summaryConfig.js')
-      this.testing = config.default
     }
   },
   // =============================================================================
   // initiate data extraction from router when component is created
-  async created() {
+  async created () {
     this.loading = true
-    this.$store.commit('setFiltersStorage', { ...sessionStorage })
+    await this.$uci.load('summary')
+    this.configSummary = this.$uci.sections('summary')
     await this.getSystemInfo()
     await this.getCpuUsage()
     this.cardInfo.unshift(this.systemInfo)
     // // network related info
     await this.getNetworkInfo()
-    this.testRun()
     // // syslog related info
     await this.getSystemLogs()
     await this.getNetworkLogs()
@@ -442,14 +442,13 @@ export default {
     this.interfaces.forEach((nIntrf) => {
       this.cardInfo.push(nIntrf)
     })
-    this.$store.commit('setFiltersStorage', { ...sessionStorage })
     this.setFilterArray()
     this.loading = false
   },
   watch: {
     deep: true,
     systemInfo: {
-      handler() {
+      handler () {
         if (this.cardInfo.length > 0) {
           const indexOfSystem = this.cardInfo.findIndex((obj) => {
             return obj.name === 'System'
@@ -458,29 +457,34 @@ export default {
         }
       }
     },
-    storage: {
-      handler() {
-        const obj = this.storage
-        let mutatedObject = {}
-        for (const key in obj) {
-          if (key.includes('filter_id_')) {
-            const mutatedKey = key.substring(10)
-            mutatedObject = { ...mutatedObject, [mutatedKey]: obj[key] }
-          }
-        }
+    updFilters: {
+      async handler () {
+        // setting new visablity in UI
         this.cardInfo.forEach((card) => {
-          for (const key in mutatedObject) {
-            if (card.id === key) {
-              card.isVisible = mutatedObject[key] === 'true'
+          this.updFilters.forEach((filter) => {
+            if (card.id === filter.name) {
+              card.isVisible = filter.isVisible
             }
-          }
+          })
         })
-      }
-    },
-    testing: {
-      handler() {
-        alert('worked')
-        console.log(this.testing)
+        // setting new visability in config
+        await this.$uci.load('summary')
+        const sections = this.$uci.sections('summary')
+        this.updFilters.forEach((filter) => {
+          sections.find((section) => {
+            if (section.name === filter.name) {
+              this.$uci.set(
+                'summary',
+                section['.name'],
+                'isVisible',
+                `${filter.isVisible}`
+              )
+            }
+          })
+        })
+        await this.$uci.save().then(() => {
+          this.$uci.apply()
+        })
       }
     }
   }
