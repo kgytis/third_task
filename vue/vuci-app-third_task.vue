@@ -1,16 +1,28 @@
 <template>
   <div class="parentDiv">
-    <div style="background-color: #ffffff; padding: 10px">
+    <div v-if="loading" class="loadingDiv">
+      <a-spin size="large" />
+    </div>
+    <div v-else style="background-color: #ffffff; padding: 10px">
       <h1 v-if="filteredInfo.length === 0">
         No data to display. Select filters.
       </h1>
       <a-row :gutter="16" :loading="loading">
-        <custom-card
-          v-for="(data, i) in filteredInfo"
-          :key="i"
-          :data="data"
-          :loading="loading"
-        ></custom-card>
+        <draggable
+          v-model="cardInfo"
+          group="settings"
+          @start="drag = true"
+          @end="drag = false"
+        >
+          <custom-card
+            v-for="(data, i) in filteredInfo"
+            :key="i"
+            :index="i"
+            :data="data"
+            :loading="loading"
+            class="myContainer"
+          ></custom-card>
+        </draggable>
       </a-row>
       <button-group
         @drawerOpen="toggleDrawer"
@@ -36,11 +48,14 @@ import ButtonGroup from './components/ButtonGroup.vue'
 import FilterForm from './components/FilterForm.vue'
 import CustomCard from './components/CustomCard.vue'
 
+import draggable from 'vuedraggable'
+
 export default {
   components: {
     ButtonGroup,
     FilterForm,
-    CustomCard
+    CustomCard,
+    draggable
   },
   timers: {
     update: { time: 2000, autostart: true, immediate: true, repeat: true },
@@ -51,7 +66,7 @@ export default {
       repeat: true
     }
   },
-  data () {
+  data() {
     return {
       // data responsible for card creation (what type of data is passed to each card component)
       type: {
@@ -75,18 +90,21 @@ export default {
       // workaround to display last added network intrf to an end (for further details refer to respective method)
       interfaces: [],
       configSummary: [],
-      updFilters: []
+      updFilters: [],
+      filteredArray: []
     }
   },
   computed: {
     // this computed prop holds what fetched data should be displayed -> only with isVisiblie prop = true
-    filteredInfo () {
-      return this.cardInfo.filter((card) => {
-        return card.isVisible === true
-      })
+    filteredInfo: {
+      get() { 
+        return this.cardInfo.filter((card) => {
+          return card.isVisible === true
+        })
+      }
     },
     // this comp. prop. holds data from store (it contains newest sessionStorage values)
-    configStorage () {
+    configStorage() {
       const sections = this.$uci.sections('summary')
       const visibilityStatus = sections.map((section) => {
         return { name: section.name, isVisible: section.isVisible }
@@ -95,12 +113,40 @@ export default {
     }
   },
   methods: {
-    toggleDrawer () {
+    toggleDrawer() {
       this.drawerVisible = !this.drawerVisible
+    },
+    sortingFromConfig() { 
+      const sortedConfig = this.configSummary
+
+      function compare(a, b) {
+        if (Number(a.place) < Number(b.place)) {
+          return -1
+        }
+        if (Number(a.place) > Number(b.place)) {
+          return 1
+        }
+        return 0
+      }
+      sortedConfig.sort(compare)
+      const interArray = []
+      sortedConfig.forEach((item) => {
+        // when creating summary config, one wireless somehow duplicates no other values attached to it, thus position returned undefined
+        if (item.place === undefined) {
+          return
+        } else {
+          this.cardInfo.find((card) => {
+            if (card.id === item.name) {
+              interArray.push(card)
+            }
+          })
+        }
+      })
+      this.cardInfo = interArray
     },
     // FILTERING LOGIC ===============================================================
     // this method responsible for setting options in drawer, not filtering itself
-    setFilterArray () {
+    setFilterArray() {
       if (this.cardInfo.length > 0) {
         this.filtersArray = this.cardInfo.map((card) => {
           return { name: card.name, isVisible: card.isVisible, id: card.id }
@@ -108,23 +154,28 @@ export default {
       }
     },
     // this method dispatches action to fill storage array with isVisible values
-    setFilterStorage (filters) {
+    async setFilterStorage(filters) {
+      await this.$uci.load('summary')
       const configStorage = this.configStorage
       // looks through configStorage and checks whether any matches to filter
       // if matched = visibility true and vice versa
       configStorage.forEach((v) => {
-        filters.find((filter) => {
-          if (v.name === filter) {
-            return (v.isVisible = true)
-          } else {
-            return (v.isVisible = false)
-          }
-        })
+        if (filters.length !== 0) {
+          filters.find((filter) => {
+            if (v.name === filter) {
+              return (v.isVisible = true)
+            } else {
+              return (v.isVisible = false)
+            }
+          })
+        } else {
+          return (v.isVisible = false)
+        }
       })
       this.updFilters = []
       this.updFilters = configStorage
     },
-    async setConfig (id, visibility) {
+    async setConfig(id, visibility) {
       await this.$uci.load('summary')
       const sectionCheck = await this.$uci.sections('summary', id)
       if (sectionCheck[0] !== undefined) {
@@ -139,7 +190,7 @@ export default {
         })
       }
     },
-    getVisibility (id, extra) {
+    getVisibility(id, extra) {
       let visibility
       const section = this.$uci.sections('summary', id)
       if (section[0] === undefined) {
@@ -152,7 +203,7 @@ export default {
     },
     // =============================================================================
     // SYSTEM INFO LOGIC ============================================================
-    async getSystemInfo () {
+    async getSystemInfo() {
       await this.$system
         .getInfo()
         .then(async ({ release, localtime, uptime, memory }) => {
@@ -194,7 +245,7 @@ export default {
           )
         })
     },
-    async update () {
+    async update() {
       await this.$system
         .getInfo()
         .then(({ release, localtime, uptime, memory }) => {
@@ -232,7 +283,7 @@ export default {
         })
     },
     // Method responsible for CPU usage info extraction
-    async getCpuUsage () {
+    async getCpuUsage() {
       await this.$rpc.call('system', 'cpu_time').then((times) => {
         if (!this.lastCPUTime) {
           this.cpuPercentage = 0
@@ -260,12 +311,12 @@ export default {
       })
     },
     // Method responsible for CPU usage info update
-    updateCpuUsage () {
+    updateCpuUsage() {
       this.getCpuUsage()
     },
     // =============================================================================
     // INTERFACE LOGIC =============================================================
-    async getNetworkInfo () {
+    async getNetworkInfo() {
       await this.$network.load().then(() => {
         const interfaces = this.$network.getInterfaces()
         interfaces.forEach((intrf) => {
@@ -273,20 +324,23 @@ export default {
           if (newIntrfObj.default) {
             this.cardInfo.push(newIntrfObj)
             this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
+            // this.setPlaceInArray(newIntrfObj.id)
           } else {
             // for new interface also by default - true
             this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
             this.interfaces.push(newIntrfObj)
+            // this.setPlaceInArray(newIntrfObj.id)
           }
         })
       })
     },
-    setIntrfObj (intrf) {
+    setIntrfObj(intrf) {
       const visibility = this.getVisibility(intrf.name, 'extra')
       return {
         id: `${intrf.name}`,
         name: intrf.name,
-        default: intrf.name === 'lan' || intrf.name === 'wan' || intrf.name === 'wan6',
+        default:
+          intrf.name === 'lan' || intrf.name === 'wan' || intrf.name === 'wan6',
         isVisible: visibility === 'true',
         data: [
           {
@@ -312,7 +366,7 @@ export default {
     // =============================================================================
     // LOGS LOGIC =============================================================
     // Method responsible for network interface card info extraction
-    setLogData (allLogs, logCardType) {
+    setLogData(allLogs, logCardType) {
       const lastLogs = allLogs.slice(Math.max(allLogs.length - 5, 1))
       let finalLogs = []
       if (logCardType === 'system') {
@@ -336,7 +390,7 @@ export default {
       return finalLogs
     },
     // Method responsible for system log info extraction + handle to display 5 latest
-    async getSystemLogs () {
+    async getSystemLogs() {
       const id = 'syslogs'
       const visibility = this.getVisibility(id) // cia turetu atsirasti reiksme is config'o
       this.setConfig(id, visibility)
@@ -352,10 +406,11 @@ export default {
           isVisible: visibility === 'true',
           data: this.setLogData(allLogs, 'system')
         })
+        // this.setPlaceInArray(id)
       })
     },
     // Method responsible for network log info extraction + handle to display 5 latest
-    async getNetworkLogs () {
+    async getNetworkLogs() {
       const id = 'netlogs'
       const visibility = this.getVisibility(id) // cia turetu atsirasti reiksme is config'o
       this.setConfig(id, visibility)
@@ -370,11 +425,12 @@ export default {
         isVisible: visibility === 'true',
         data: this.setLogData(allLogs, 'network')
       })
+      // this.setPlaceInArray(id)
     },
     // =============================================================================
     // WIRELESS LOGIC ==============================================================
     // Method responsible for wireless cards info extraction
-    async getWireless () {
+    async getWireless() {
       const devices = await this.$wireless.getDevices().then((res) => {
         return res
       })
@@ -421,18 +477,20 @@ export default {
           ]
         }
         this.cardInfo.push(namedObject)
+        // this.setPlaceInArray(namedObject.id)
       })
     }
   },
   // =============================================================================
   // initiate data extraction from router when component is created
-  async created () {
+  async created() {
     this.loading = true
     await this.$uci.load('summary')
     this.configSummary = this.$uci.sections('summary')
     await this.getSystemInfo()
     await this.getCpuUsage()
     this.cardInfo.unshift(this.systemInfo)
+    // this.setPlaceInArray('system')
     // // network related info
     await this.getNetworkInfo()
     // // syslog related info
@@ -443,12 +501,15 @@ export default {
       this.cardInfo.push(nIntrf)
     })
     this.setFilterArray()
+    // splice'inam
+    // console.log(this.configSummary)
+    this.sortingFromConfig()
     this.loading = false
   },
   watch: {
     deep: true,
     systemInfo: {
-      handler () {
+      handler() {
         if (this.cardInfo.length > 0) {
           const indexOfSystem = this.cardInfo.findIndex((obj) => {
             return obj.name === 'System'
@@ -458,7 +519,7 @@ export default {
       }
     },
     updFilters: {
-      async handler () {
+      async handler() {
         // setting new visablity in UI
         this.cardInfo.forEach((card) => {
           this.updFilters.forEach((filter) => {
@@ -486,6 +547,34 @@ export default {
           this.$uci.apply()
         })
       }
+    },
+    cardInfo: {
+      async handler(newValue, oldValue) {
+        const newOrder = newValue.map((val, i) => {
+          return `${val.id}-${i}`
+        })
+        const oldOrder = oldValue.map((val, i) => {
+          return `${val.id}-${i}`
+        })
+        const compared = JSON.stringify(newOrder) === JSON.stringify(oldOrder)
+
+        if (compared) {
+          return
+        } else {
+          console.log('differs')
+          newValue.forEach(async (card, i) => {
+            // jei cia idedu load, tuomet nebeveikia filtravimas
+            // jei nededu, tuomet veikia filtravimas, bet sorte'inimas ne itin
+            await this.$uci.load('summary') 
+            const section = this.$uci.sections('summary', card.id)
+            const sid = section[0]['.name']
+            await this.$uci.set('summary', sid, 'place', `${i}`)
+            await this.$uci.save().then(() => {
+              this.$uci.apply()
+            })
+          })
+        }
+      }
     }
   }
 }
@@ -495,4 +584,17 @@ export default {
 .parentDiv {
   position: relative;
 }
+.loadingDiv {
+  text-align: center;
+  height: 90vh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+}
+.over {
+  background: rgba(136, 136, 136, 0.5);
+}
+
 </style>
