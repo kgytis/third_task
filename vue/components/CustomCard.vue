@@ -21,9 +21,7 @@
       <template v-if="data.extraHeader" #extra>
         <slot>
           <custom-badge
-            :percentageBar="data.extraHeader.percentage"
-            :content="data.extraHeader.content"
-            :icon="data.extraHeader.icon"
+            :extraHeader="data.extraHeader"
           ></custom-badge>
         </slot>
       </template>

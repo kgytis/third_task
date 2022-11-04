@@ -1,16 +1,16 @@
 <template>
   <div>
-    <div v-if="content">
+    <div v-if="extraHeader.content">
       <p>
-        {{ content }}
-        <span v-if="icon"
-          ><b-icon :icon="icon" aria-hidden="true"></b-icon
+        {{ extraHeader.content }}
+        <span v-if="extraHeader.icon"
+          ><b-icon :icon="extraHeader.icon" aria-hidden="true"></b-icon
         ></span>
       </p>
     </div>
-    <div v-if="percentageBar || percentageBar === 0">
+    <div v-if="extraHeader.percentage || extraHeader.percentage === 0">
       <div class="lineContainer">
-        <div class="lineIndicator" :style="barWidth(percentageBar)"></div>
+        <div class="lineIndicator" :style="barWidth(extraHeader.percentage)"></div>
       </div>
     </div>
   </div>
@@ -19,14 +19,8 @@
 <script>
 export default {
   props: {
-    percentageBar: {
-      type: Number
-    },
-    content: {
-      type: String
-    },
-    icon: {
-      type: String
+    extraHeader: {
+      type: Object
     }
   },
   methods: {

@@ -14,7 +14,6 @@
           :index="i"
           :data="data"
           :loading="loading"
-          class="myContainer"
           :id="data.id"
           @draggedItem="setDraggedNode"
           @droppedItem="setReplacedNode"
@@ -45,14 +44,11 @@ import ButtonGroup from './components/ButtonGroup.vue'
 import FilterForm from './components/FilterForm.vue'
 import CustomCard from './components/CustomCard.vue'
 
-import draggable from 'vuedraggable'
-
 export default {
   components: {
     ButtonGroup,
     FilterForm,
-    CustomCard,
-    draggable
+    CustomCard
   },
   timers: {
     update: { time: 2000, autostart: true, immediate: true, repeat: true },
@@ -63,7 +59,7 @@ export default {
       repeat: true
     }
   },
-  data () {
+  data() {
     return {
       // data responsible for card creation (what type of data is passed to each card component)
       type: {
@@ -134,9 +130,7 @@ export default {
       const interArray = []
       sortedConfig.forEach((item) => {
         // when creating summary config, one wireless somehow duplicates no other values attached to it, thus position returned undefined
-        if (item.place === undefined) {
-          return
-        } else {
+        if (item.place !== undefined) {
           this.cardInfo.find((card) => {
             if (card.id === item.name) {
               interArray.push(card)
@@ -177,7 +171,7 @@ export default {
       this.updFilters = []
       this.updFilters = configStorage
     },
-    async setConfig(id, visibility) {
+    async setConfig(id, visibility, place) {
       await this.$uci.load('summary')
       const sectionCheck = await this.$uci.sections('summary', id)
       if (sectionCheck[0] !== undefined) {
@@ -187,6 +181,12 @@ export default {
         const sid = sections[0]['.name']
         this.$uci.set('summary', sid, 'name', `${id}`)
         this.$uci.set('summary', sid, 'isVisible', `${visibility}`)
+        if(place) {
+          const allSections = await this.$uci.sections('summary')
+          const setPlace = allSections.length
+          this.$uci.set('summary', sid, 'place', `${setPlace}`)
+        }
+        console.log('new config')
         await this.$uci.save().then(() => {
           this.$uci.apply()
         })
@@ -253,11 +253,11 @@ export default {
         .then(({ release, localtime, uptime, memory }) => {
           this.systemInfo = {
             ...this.systemInfo,
+            counter: this.counter++,
             extraHeader: {
               content: `CPU Load (${this.cpuPercentage}%)`,
               percentage: this.cpuPercentage
             },
-            counter: this.counter++,
             data: [
               {
                 label: { value: 'Router uptime' },
@@ -322,19 +322,21 @@ export default {
     async getNetworkInfo() {
       await this.$network.load().then(() => {
         const interfaces = this.$network.getInterfaces()
+        const defaultInterfaces = []
         interfaces.forEach((intrf) => {
           const newIntrfObj = this.setIntrfObj(intrf)
           if (newIntrfObj.default) {
             this.cardInfo.push(newIntrfObj)
+            defaultInterfaces.push(newIntrfObj)
             this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
-            // this.setPlaceInArray(newIntrfObj.id)
           } else {
-            // for new interface also by default - true
-            this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
             this.interfaces.push(newIntrfObj)
-            // this.setPlaceInArray(newIntrfObj.id)
+            defaultInterfaces.push(newIntrfObj)
+            // for new interface also by default - true
+            this.setConfig(newIntrfObj.id, newIntrfObj.isVisible, true)
           }
         })
+        return defaultInterfaces
       })
     },
     setIntrfObj(intrf) {
@@ -403,13 +405,14 @@ export default {
           v.key = i
           return v
         })
-        this.cardInfo.push({
+        const sysLogs = {
           id: id,
           name: 'Recent system events',
           isVisible: visibility === 'true',
           data: this.setLogData(allLogs, 'system')
-        })
-        // this.setPlaceInArray(id)
+        }
+        this.cardInfo.push(sysLogs)
+        return sysLogs
       })
     },
     // Method responsible for network log info extraction + handle to display 5 latest
@@ -422,12 +425,14 @@ export default {
         .then((response) => {
           return response.log
         })
-      this.cardInfo.push({
+      const netLogs = {
         id: id,
         name: 'Recent network events',
         isVisible: visibility === 'true',
         data: this.setLogData(allLogs, 'network')
-      })
+      }
+      this.cardInfo.push(netLogs)
+      return netLogs
       // this.setPlaceInArray(id)
     },
     // =============================================================================
@@ -445,6 +450,7 @@ export default {
       wirelessDev = await Promise.all(promises).then((res) => {
         return res
       })
+      const wirelessCards = []
       wirelessDev.forEach((dev) => {
         const name =
           dev.frequency > 2500 ? `${dev.ssid} (5GHZ)` : `${dev.ssid} (2.4GHZ)`
@@ -480,12 +486,13 @@ export default {
           ]
         }
         this.cardInfo.push(namedObject)
-        // this.setPlaceInArray(namedObject.id)
+        wirelessCards.push(namedObject)
       })
+      return wirelessCards
     },
     // drag and drop methods =====================================================
     setDraggedNode(info) {
-      const { node, event } = info
+      const { node } = info
       this.draggedNode = null
       if (
         (node.hasOwnProperty('className') &&
@@ -517,24 +524,12 @@ export default {
         this.replacedNode = node
       }
       this.sortSlide(this.draggedNode, this.replacedNode, event.clientX)
+      if (this.draggedOverNode !== null) {
+        this.draggedOverNode.classList.remove('dragging')
+        this.draggedNode.classList.remove('dragging')
+      }
     },
     testing(info) {
-      // const { node, event } = info
-      // this.replacedNode = null
-      // if (
-      //   !node.hasOwnProperty('className') ||
-      //   !node.className.includes('draggable')
-      // ) {
-      //   if (node.nodeType === 1) {
-      //     this.replacedNode = node.closest('.draggable')
-      //   } else if (node.nodeType === 3) {
-      //     this.replacedNode = node.parentNode.closest('.draggable')
-      //   }
-      // } else {
-      //   this.replacedNode = node
-      // }
-      // this.sortSlide(this.draggedNode, this.replacedNode, event.clientX)
-      // // this.exchangeElements(this.draggedNode, this.replacedNode)
     },
     sortSlide(node1, node2, mouseX) {
       // sita logika reiktu permesti i dragover?
@@ -564,7 +559,6 @@ export default {
       this.cardInfo = this.sortingArray
 
       // setting places in config file ------------
-
       this.cardInfo.forEach(async (el, i) => {
         try {
           await this.$uci.load('summary')
@@ -589,7 +583,6 @@ export default {
     await this.getSystemInfo()
     await this.getCpuUsage()
     this.cardInfo.unshift(this.systemInfo)
-    // this.setPlaceInArray('system')
     // // network related info
     await this.getNetworkInfo()
     // // syslog related info
@@ -599,6 +592,9 @@ export default {
     this.interfaces.forEach((nIntrf) => {
       this.cardInfo.push(nIntrf)
     })
+    // need separate uci load and new config, if new interface is added to cardInfo, place in UI depends on 'place' in config file
+    await this.$uci.load('summary')
+    this.configSummary = this.$uci.sections('summary')
     this.setFilterArray()
     this.sortingFromConfig()
     this.loading = false
@@ -660,11 +656,5 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-}
-.over {
-  background: rgba(136, 136, 136, 0.5);
-}
-.dragging {
-  opacity: 0.4;
 }
 </style>
