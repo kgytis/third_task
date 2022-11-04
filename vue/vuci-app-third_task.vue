@@ -8,21 +8,18 @@
         No data to display. Select filters.
       </h1>
       <a-row :gutter="16" :loading="loading">
-        <draggable
-          v-model="cardInfo"
-          group="settings"
-          @start="drag = true"
-          @end="drag = false"
-        >
-          <custom-card
-            v-for="(data, i) in filteredInfo"
-            :key="i"
-            :index="i"
-            :data="data"
-            :loading="loading"
-            class="myContainer"
-          ></custom-card>
-        </draggable>
+        <custom-card
+          v-for="(data, i) in cardInfo"
+          :key="i"
+          :index="i"
+          :data="data"
+          :loading="loading"
+          class="myContainer"
+          :id="data.id"
+          @draggedItem="setDraggedNode"
+          @droppedItem="setReplacedNode"
+          @draggingOver="testing"
+        ></custom-card>
       </a-row>
       <button-group
         @drawerOpen="toggleDrawer"
@@ -66,7 +63,7 @@ export default {
       repeat: true
     }
   },
-  data() {
+  data () {
     return {
       // data responsible for card creation (what type of data is passed to each card component)
       type: {
@@ -82,6 +79,7 @@ export default {
       lastCPUTime: null,
       cpuPercentage: 100,
       memPercentage: 100,
+      counter: 0,
       // state handlers (loading for data fetch and visibility for drawer)
       loading: true,
       drawerVisible: false,
@@ -91,17 +89,19 @@ export default {
       interfaces: [],
       configSummary: [],
       updFilters: [],
-      filteredArray: []
+      // for drag n sort
+      sortingArray: [],
+      draggedNode: null,
+      replacedNode: null,
+      draggedOverNode: null
     }
   },
   computed: {
     // this computed prop holds what fetched data should be displayed -> only with isVisiblie prop = true
-    filteredInfo: {
-      get() { 
-        return this.cardInfo.filter((card) => {
-          return card.isVisible === true
-        })
-      }
+    filteredInfo() {
+      return this.cardInfo.filter((card) => {
+        return card.isVisible === true
+      })
     },
     // this comp. prop. holds data from store (it contains newest sessionStorage values)
     configStorage() {
@@ -116,9 +116,11 @@ export default {
     toggleDrawer() {
       this.drawerVisible = !this.drawerVisible
     },
-    sortingFromConfig() { 
+    sortingFromConfig() {
       const sortedConfig = this.configSummary
-
+      sortedConfig.forEach((el) => {
+        el.place = Number(el.place)
+      })
       function compare(a, b) {
         if (Number(a.place) < Number(b.place)) {
           return -1
@@ -255,6 +257,7 @@ export default {
               content: `CPU Load (${this.cpuPercentage}%)`,
               percentage: this.cpuPercentage
             },
+            counter: this.counter++,
             data: [
               {
                 label: { value: 'Router uptime' },
@@ -479,6 +482,102 @@ export default {
         this.cardInfo.push(namedObject)
         // this.setPlaceInArray(namedObject.id)
       })
+    },
+    // drag and drop methods =====================================================
+    setDraggedNode(info) {
+      const { node, event } = info
+      this.draggedNode = null
+      if (
+        (node.hasOwnProperty('className') &&
+          !node.className.includes('draggable')) ||
+        !node.hasOwnProperty('className')
+      ) {
+        if (node.nodeType === 1) {
+          this.draggedNode = node.closest('.draggable')
+        } else if (node.nodeType === 3) {
+          this.draggedNode = node.parentNode.closest('.draggable')
+        }
+      } else {
+        this.draggedNode = node
+      }
+    },
+    setReplacedNode(info) {
+      const { node, event } = info
+      this.replacedNode = null
+      if (
+        !node.hasOwnProperty('className') ||
+        !node.className.includes('draggable')
+      ) {
+        if (node.nodeType === 1) {
+          this.replacedNode = node.closest('.draggable')
+        } else if (node.nodeType === 3) {
+          this.replacedNode = node.parentNode.closest('.draggable')
+        }
+      } else {
+        this.replacedNode = node
+      }
+      this.sortSlide(this.draggedNode, this.replacedNode, event.clientX)
+    },
+    testing(info) {
+      // const { node, event } = info
+      // this.replacedNode = null
+      // if (
+      //   !node.hasOwnProperty('className') ||
+      //   !node.className.includes('draggable')
+      // ) {
+      //   if (node.nodeType === 1) {
+      //     this.replacedNode = node.closest('.draggable')
+      //   } else if (node.nodeType === 3) {
+      //     this.replacedNode = node.parentNode.closest('.draggable')
+      //   }
+      // } else {
+      //   this.replacedNode = node
+      // }
+      // this.sortSlide(this.draggedNode, this.replacedNode, event.clientX)
+      // // this.exchangeElements(this.draggedNode, this.replacedNode)
+    },
+    sortSlide(node1, node2, mouseX) {
+      // sita logika reiktu permesti i dragover?
+      const elementsRect = node2.getBoundingClientRect()
+      const elementsCenter = elementsRect.left + elementsRect.width / 2
+      this.sortingArray = this.cardInfo
+      const indexOfNode1 = this.sortingArray.findIndex(
+        (card) => card.id === node1.id
+      )
+      const indexOfNode2 = this.sortingArray.findIndex(
+        (card) => card.id === node2.id
+      )
+      const element = this.sortingArray.splice(indexOfNode1, 1)[0]
+      if (elementsCenter > mouseX) {
+        if (indexOfNode1 < indexOfNode2) {
+          this.sortingArray.splice(indexOfNode2 - 1, 0, element)
+        } else {
+          this.sortingArray.splice(indexOfNode2, 0, element)
+        }
+      } else {
+        if (indexOfNode1 < indexOfNode2) {
+          this.sortingArray.splice(indexOfNode2, 0, element)
+        } else {
+          this.sortingArray.splice(indexOfNode2 + 1, 0, element)
+        }
+      }
+      this.cardInfo = this.sortingArray
+
+      // setting places in config file ------------
+
+      this.cardInfo.forEach(async (el, i) => {
+        try {
+          await this.$uci.load('summary')
+          const section = this.$uci.sections('summary', el.id)
+          const sid = section[0]['.name']
+          await this.$uci.set('summary', sid, 'place', `${i}`)
+          await this.$uci.save().then(() => {
+            this.$uci.apply()
+          })
+        } catch (error) {
+          console.log(error.message)
+        }
+      })
     }
   },
   // =============================================================================
@@ -501,14 +600,12 @@ export default {
       this.cardInfo.push(nIntrf)
     })
     this.setFilterArray()
-    // splice'inam
-    // console.log(this.configSummary)
     this.sortingFromConfig()
     this.loading = false
   },
   watch: {
-    deep: true,
-    systemInfo: {
+    // deep: true,
+    'systemInfo.counter': {
       handler() {
         if (this.cardInfo.length > 0) {
           const indexOfSystem = this.cardInfo.findIndex((obj) => {
@@ -547,34 +644,6 @@ export default {
           this.$uci.apply()
         })
       }
-    },
-    cardInfo: {
-      async handler(newValue, oldValue) {
-        const newOrder = newValue.map((val, i) => {
-          return `${val.id}-${i}`
-        })
-        const oldOrder = oldValue.map((val, i) => {
-          return `${val.id}-${i}`
-        })
-        const compared = JSON.stringify(newOrder) === JSON.stringify(oldOrder)
-
-        if (compared) {
-          return
-        } else {
-          console.log('differs')
-          newValue.forEach(async (card, i) => {
-            // jei cia idedu load, tuomet nebeveikia filtravimas
-            // jei nededu, tuomet veikia filtravimas, bet sorte'inimas ne itin
-            await this.$uci.load('summary') 
-            const section = this.$uci.sections('summary', card.id)
-            const sid = section[0]['.name']
-            await this.$uci.set('summary', sid, 'place', `${i}`)
-            await this.$uci.save().then(() => {
-              this.$uci.apply()
-            })
-          })
-        }
-      }
     }
   }
 }
@@ -591,10 +660,11 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
-
 }
 .over {
   background: rgba(136, 136, 136, 0.5);
 }
-
+.dragging {
+  opacity: 0.4;
+}
 </style>

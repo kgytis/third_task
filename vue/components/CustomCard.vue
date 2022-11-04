@@ -1,37 +1,36 @@
 <template>
-  <a-col :span="6" :id="data.name">
-    <!-- <li
+  <a-col
+    :span="6"
+    :id="data.name"
+    @drop="handleDrop"
+    @dragover.prevent="testing"
+    v-if="data.isVisible"
+  >
+    <a-card
+      :title="data.name"
+      :bordered="true"
+      :loading="loading"
+      style="min-height: 420px; margin-bottom: 20px"
+      :bodyStyle="bodyStyle"
+      :id="data.id"
+      :class="{ over: dragProps.over }"
+      class="card draggable"
       draggable="true"
-      @drag="setDragging"
-      @drop="dragDrop"
-      @dragstart="dragStart"
-      @dragover.prevent="setDraggedOver"
-      class="draggable"
-      :id="index"
-    > -->
-      <a-card
-        :title="data.name"
-        :bordered="true"
-        :loading="loading"
-        style="min-height: 420px; margin-bottom: 20px"
-        :bodyStyle="bodyStyle"
-        :id="data.id"
-        :class="{ over: dragProps.over }"
-      >
-        <template v-if="data.extraHeader" #extra>
-          <slot>
-            <custom-badge
-              :percentageBar="data.extraHeader.percentage"
-              :content="data.extraHeader.content"
-              :icon="data.extraHeader.icon"
-            ></custom-badge>
-          </slot>
-        </template>
-        <div v-for="(content, i) in data.data" :key="i + 1000">
-          <card-entry :content="content"></card-entry>
-        </div>
-      </a-card>
-    <!-- </li> -->
+      @dragstart="handleDragStart"
+    >
+      <template v-if="data.extraHeader" #extra>
+        <slot>
+          <custom-badge
+            :percentageBar="data.extraHeader.percentage"
+            :content="data.extraHeader.content"
+            :icon="data.extraHeader.icon"
+          ></custom-badge>
+        </slot>
+      </template>
+      <div v-for="(content, i) in data.data" :key="i + 1000">
+        <card-entry :content="content"></card-entry>
+      </div>
+    </a-card>
   </a-col>
 </template>
 
@@ -70,27 +69,15 @@ export default {
     }
   },
   methods: {
-    // dragStart (e) {
-    //   console.log(e.target)
-    //   console.log(this.index)
-    //   // e.dataTransfer.clearData()
-    //   // e.dataTransfer.effectAllowed = 'move'
-    //   // e.dataTransfer.setData('text/html', e.target.innerHTML)
-    // },
-    // dragDrop (e) {
-    //   e.stopPropagation()
-    //   // console.log(e)
-    //   // e.target.innerHTML = e.dataTransfer.getData('text/html')
-    //   return false
-    // },
-    // setDragging (e) {
-    //   this.dragging = e.target.innerHTML
-    //   console.log(this.dragging)
-    // },
-    // setDraggedOver (e) {
-    //   this.draggedOver = e.target.innerHTML
-    //   console.log(this.draggedOver)
-    // }
+    handleDragStart (e) {
+      this.$emit('draggedItem', { node: e.explicitOriginalTarget, event: e })
+    },
+    handleDrop (e) {
+      this.$emit('droppedItem', { node: e.explicitOriginalTarget, event: e })
+    },
+    testing (e) {
+      this.$emit('draggingOver', { node: e.explicitOriginalTarget, event: e })
+    }
   }
 }
 </script>
@@ -98,6 +85,9 @@ export default {
 <style scoped>
 .draggable {
   cursor: move;
+}
+.isVissible {
+  background: red;
 }
 /*
 .over {
