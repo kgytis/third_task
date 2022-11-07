@@ -3,9 +3,9 @@
     <div v-if="extraHeader.content">
       <p>
         {{ extraHeader.content }}
-        <span v-if="extraHeader.icon"
-          ><b-icon :icon="extraHeader.icon" aria-hidden="true"></b-icon
-        ></span>
+        <span v-if="extraHeader.icon">
+          <img src="/icons/wifi-on.png"/>
+        </span>
       </p>
     </div>
     <div v-if="extraHeader.percentage || extraHeader.percentage === 0">
@@ -47,4 +47,9 @@ p {
   border-radius: 20px;
   height: 100%;
 }
+
+img {
+  width: 1.4rem;
+}
+
 </style>

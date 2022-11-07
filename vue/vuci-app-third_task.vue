@@ -17,7 +17,6 @@
           :id="data.id"
           @draggedItem="setDraggedNode"
           @droppedItem="setReplacedNode"
-          @draggingOver="testing"
         ></custom-card>
       </a-row>
       <button-group
@@ -59,7 +58,7 @@ export default {
       repeat: true
     }
   },
-  data() {
+  data () {
     return {
       // data responsible for card creation (what type of data is passed to each card component)
       type: {
@@ -69,24 +68,20 @@ export default {
         percentage: 'percentage'
       },
       // data displayed in cards
-      systemInfo: {},
       cardInfo: [],
       // data for default values of system
       lastCPUTime: null,
       cpuPercentage: 100,
       memPercentage: 100,
-      counter: 0,
       // state handlers (loading for data fetch and visibility for drawer)
       loading: true,
       drawerVisible: false,
       // drawer filler array
       filtersArray: [],
       // workaround to display last added network intrf to an end (for further details refer to respective method)
-      interfaces: [],
       configSummary: [],
       updFilters: [],
       // for drag n sort
-      sortingArray: [],
       draggedNode: null,
       replacedNode: null,
       draggedOverNode: null
@@ -94,13 +89,13 @@ export default {
   },
   computed: {
     // this computed prop holds what fetched data should be displayed -> only with isVisiblie prop = true
-    filteredInfo() {
+    filteredInfo () {
       return this.cardInfo.filter((card) => {
         return card.isVisible === true
       })
     },
     // this comp. prop. holds data from store (it contains newest sessionStorage values)
-    configStorage() {
+    configStorage () {
       const sections = this.$uci.sections('summary')
       const visibilityStatus = sections.map((section) => {
         return { name: section.name, isVisible: section.isVisible }
@@ -109,15 +104,15 @@ export default {
     }
   },
   methods: {
-    toggleDrawer() {
+    toggleDrawer () {
       this.drawerVisible = !this.drawerVisible
     },
-    sortingFromConfig() {
+    sortingFromConfig () {
       const sortedConfig = this.configSummary
       sortedConfig.forEach((el) => {
         el.place = Number(el.place)
       })
-      function compare(a, b) {
+      function compare (a, b) {
         if (Number(a.place) < Number(b.place)) {
           return -1
         }
@@ -140,9 +135,26 @@ export default {
       })
       this.cardInfo = interArray
     },
+    // CardInfo filling with separate fetched data ===================================
+    async setCardInfo () {
+      const wireless = await this.getWireless()
+      const syslogs = await this.getSystemLogs()
+      const netlogs = await this.getNetworkLogs()
+      const interfaces = await this.getNetworkInfo()
+      const system = await this.getSystemInfo()
+      this.cardInfo.push(system)
+      wireless.forEach((wireless) => {
+        this.cardInfo.push(wireless)
+      })
+      this.cardInfo.push(syslogs)
+      this.cardInfo.push(netlogs)
+      interfaces.forEach((intrf) => {
+        this.cardInfo.push(intrf)
+      })
+    },
     // FILTERING LOGIC ===============================================================
     // this method responsible for setting options in drawer, not filtering itself
-    setFilterArray() {
+    setFilterArray () {
       if (this.cardInfo.length > 0) {
         this.filtersArray = this.cardInfo.map((card) => {
           return { name: card.name, isVisible: card.isVisible, id: card.id }
@@ -150,7 +162,7 @@ export default {
       }
     },
     // this method dispatches action to fill storage array with isVisible values
-    async setFilterStorage(filters) {
+    async setFilterStorage (filters) {
       await this.$uci.load('summary')
       const configStorage = this.configStorage
       // looks through configStorage and checks whether any matches to filter
@@ -171,7 +183,7 @@ export default {
       this.updFilters = []
       this.updFilters = configStorage
     },
-    async setConfig(id, visibility, place) {
+    async setConfig (id, visibility, place) {
       await this.$uci.load('summary')
       const sectionCheck = await this.$uci.sections('summary', id)
       if (sectionCheck[0] !== undefined) {
@@ -181,18 +193,17 @@ export default {
         const sid = sections[0]['.name']
         this.$uci.set('summary', sid, 'name', `${id}`)
         this.$uci.set('summary', sid, 'isVisible', `${visibility}`)
-        if(place) {
+        if (place) {
           const allSections = await this.$uci.sections('summary')
           const setPlace = allSections.length
           this.$uci.set('summary', sid, 'place', `${setPlace}`)
         }
-        console.log('new config')
         await this.$uci.save().then(() => {
           this.$uci.apply()
         })
       }
     },
-    getVisibility(id, extra) {
+    getVisibility (id, extra) {
       let visibility
       const section = this.$uci.sections('summary', id)
       if (section[0] === undefined) {
@@ -205,14 +216,14 @@ export default {
     },
     // =============================================================================
     // SYSTEM INFO LOGIC ============================================================
-    async getSystemInfo() {
-      await this.$system
+    async getSystemInfo () {
+      return await this.$system
         .getInfo()
         .then(async ({ release, localtime, uptime, memory }) => {
           const id = 'system'
           const visibility = this.getVisibility(id)
           this.setConfig(id, visibility)
-          this.systemInfo = {
+          const systemInfo = {
             id: id,
             name: 'System',
             isVisible: visibility === 'true',
@@ -245,48 +256,58 @@ export default {
           this.memPercentage = Math.floor(
             ((memory.total - memory.free) / memory.total) * 100
           )
+          return systemInfo
         })
     },
-    async update() {
-      await this.$system
-        .getInfo()
-        .then(({ release, localtime, uptime, memory }) => {
-          this.systemInfo = {
-            ...this.systemInfo,
-            counter: this.counter++,
-            extraHeader: {
-              content: `CPU Load (${this.cpuPercentage}%)`,
-              percentage: this.cpuPercentage
-            },
-            data: [
-              {
-                label: { value: 'Router uptime' },
-                output: { value: uptime, type: this.type.time }
-              },
-              {
-                label: { value: 'Local devices time' },
-                output: { value: localtime * 1000, type: this.type.date }
-              },
-              {
-                label: { value: `Memmory usage (${this.memPercentage}%)` },
-                output: {
-                  value: this.memPercentage,
-                  type: this.type.percentage
-                }
-              },
-              {
-                label: { value: 'Firmware version' },
-                output: { value: release.revision }
+    async update () {
+      // if card is not visible, no update is required. Fetch optimization
+      const newCard = { info: null, index: null }
+      this.cardInfo.find(async (card, i) => {
+        if (card.id === 'system' && card.isVisible) {
+          newCard.index = i
+          newCard.info = await this.$system
+            .getInfo()
+            .then(({ release, localtime, uptime, memory }) => {
+              this.memPercentage = Math.floor(
+                ((memory.total - memory.free) / memory.total) * 100
+              )
+              return {
+                ...card,
+                extraHeader: {
+                  content: `CPU Load (${this.cpuPercentage}%)`,
+                  percentage: this.cpuPercentage
+                },
+                data: [
+                  {
+                    label: { value: 'Router uptime' },
+                    output: { value: uptime, type: this.type.time }
+                  },
+                  {
+                    label: { value: 'Local devices time' },
+                    output: { value: localtime * 1000, type: this.type.date }
+                  },
+                  {
+                    label: { value: `Memmory usage (${this.memPercentage}%)` },
+                    output: {
+                      value: this.memPercentage,
+                      type: this.type.percentage
+                    }
+                  },
+                  {
+                    label: { value: 'Firmware version' },
+                    output: { value: release.revision }
+                  }
+                ]
               }
-            ]
+            })
+          if (newCard.info && newCard.index !== null) {
+            this.cardInfo.splice(newCard.index, 1, newCard.info)
           }
-          this.memPercentage = Math.floor(
-            ((memory.total - memory.free) / memory.total) * 100
-          )
-        })
+        }
+      })
     },
     // Method responsible for CPU usage info extraction
-    async getCpuUsage() {
+    async getCpuUsage () {
       await this.$rpc.call('system', 'cpu_time').then((times) => {
         if (!this.lastCPUTime) {
           this.cpuPercentage = 0
@@ -314,32 +335,29 @@ export default {
       })
     },
     // Method responsible for CPU usage info update
-    updateCpuUsage() {
+    updateCpuUsage () {
       this.getCpuUsage()
     },
     // =============================================================================
     // INTERFACE LOGIC =============================================================
-    async getNetworkInfo() {
+    async getNetworkInfo () {
+      const defaultInterfaces = []
       await this.$network.load().then(() => {
         const interfaces = this.$network.getInterfaces()
-        const defaultInterfaces = []
         interfaces.forEach((intrf) => {
           const newIntrfObj = this.setIntrfObj(intrf)
           if (newIntrfObj.default) {
-            this.cardInfo.push(newIntrfObj)
             defaultInterfaces.push(newIntrfObj)
             this.setConfig(newIntrfObj.id, newIntrfObj.isVisible)
           } else {
-            this.interfaces.push(newIntrfObj)
             defaultInterfaces.push(newIntrfObj)
-            // for new interface also by default - true
             this.setConfig(newIntrfObj.id, newIntrfObj.isVisible, true)
           }
         })
-        return defaultInterfaces
       })
+      return defaultInterfaces
     },
-    setIntrfObj(intrf) {
+    setIntrfObj (intrf) {
       const visibility = this.getVisibility(intrf.name, 'extra')
       return {
         id: `${intrf.name}`,
@@ -371,7 +389,7 @@ export default {
     // =============================================================================
     // LOGS LOGIC =============================================================
     // Method responsible for network interface card info extraction
-    setLogData(allLogs, logCardType) {
+    setLogData (allLogs, logCardType) {
       const lastLogs = allLogs.slice(Math.max(allLogs.length - 5, 1))
       let finalLogs = []
       if (logCardType === 'system') {
@@ -395,28 +413,30 @@ export default {
       return finalLogs
     },
     // Method responsible for system log info extraction + handle to display 5 latest
-    async getSystemLogs() {
+    async getSystemLogs () {
       const id = 'syslogs'
       const visibility = this.getVisibility(id) // cia turetu atsirasti reiksme is config'o
       this.setConfig(id, visibility)
       // need to push only last 5
-      await this.$rpc.call('system', 'syslog').then(({ log }) => {
-        const allLogs = log.map((v, i) => {
-          v.key = i
-          return v
+      const sysLogs = await this.$rpc
+        .call('system', 'syslog')
+        .then(({ log }) => {
+          const allLogs = log.map((v, i) => {
+            v.key = i
+            return v
+          })
+          const sysLogs = {
+            id: id,
+            name: 'Recent system events',
+            isVisible: visibility === 'true',
+            data: this.setLogData(allLogs, 'system')
+          }
+          return sysLogs
         })
-        const sysLogs = {
-          id: id,
-          name: 'Recent system events',
-          isVisible: visibility === 'true',
-          data: this.setLogData(allLogs, 'system')
-        }
-        this.cardInfo.push(sysLogs)
-        return sysLogs
-      })
+      return sysLogs
     },
     // Method responsible for network log info extraction + handle to display 5 latest
-    async getNetworkLogs() {
+    async getNetworkLogs () {
       const id = 'netlogs'
       const visibility = this.getVisibility(id) // cia turetu atsirasti reiksme is config'o
       this.setConfig(id, visibility)
@@ -431,14 +451,12 @@ export default {
         isVisible: visibility === 'true',
         data: this.setLogData(allLogs, 'network')
       }
-      this.cardInfo.push(netLogs)
       return netLogs
-      // this.setPlaceInArray(id)
     },
     // =============================================================================
     // WIRELESS LOGIC ==============================================================
     // Method responsible for wireless cards info extraction
-    async getWireless() {
+    async getWireless () {
       const devices = await this.$wireless.getDevices().then((res) => {
         return res
       })
@@ -485,78 +503,51 @@ export default {
             }
           ]
         }
-        this.cardInfo.push(namedObject)
         wirelessCards.push(namedObject)
       })
       return wirelessCards
     },
     // drag and drop methods =====================================================
-    setDraggedNode(info) {
+    setDraggedNode (info) {
       const { node } = info
       this.draggedNode = null
-      if (
-        (node.hasOwnProperty('className') &&
-          !node.className.includes('draggable')) ||
-        !node.hasOwnProperty('className')
-      ) {
-        if (node.nodeType === 1) {
-          this.draggedNode = node.closest('.draggable')
-        } else if (node.nodeType === 3) {
-          this.draggedNode = node.parentNode.closest('.draggable')
-        }
-      } else {
-        this.draggedNode = node
-      }
+      this.draggedNode = node
     },
-    setReplacedNode(info) {
+    setReplacedNode (info) {
       const { node, event } = info
       this.replacedNode = null
-      if (
-        !node.hasOwnProperty('className') ||
-        !node.className.includes('draggable')
-      ) {
-        if (node.nodeType === 1) {
-          this.replacedNode = node.closest('.draggable')
-        } else if (node.nodeType === 3) {
-          this.replacedNode = node.parentNode.closest('.draggable')
-        }
-      } else {
-        this.replacedNode = node
-      }
+      this.replacedNode = node
       this.sortSlide(this.draggedNode, this.replacedNode, event.clientX)
-      if (this.draggedOverNode !== null) {
-        this.draggedOverNode.classList.remove('dragging')
-        this.draggedNode.classList.remove('dragging')
-      }
     },
-    testing(info) {
-    },
-    sortSlide(node1, node2, mouseX) {
-      // sita logika reiktu permesti i dragover?
+    sortSlide (node1, node2, mouseX) {
       const elementsRect = node2.getBoundingClientRect()
       const elementsCenter = elementsRect.left + elementsRect.width / 2
-      this.sortingArray = this.cardInfo
-      const indexOfNode1 = this.sortingArray.findIndex(
+      const sortingArray = this.cardInfo
+      const indexOfNode1 = sortingArray.findIndex(
         (card) => card.id === node1.id
       )
-      const indexOfNode2 = this.sortingArray.findIndex(
+      const indexOfNode2 = sortingArray.findIndex(
         (card) => card.id === node2.id
       )
-      const element = this.sortingArray.splice(indexOfNode1, 1)[0]
+      const element = sortingArray.splice(indexOfNode1, 1)[0]
       if (elementsCenter > mouseX) {
         if (indexOfNode1 < indexOfNode2) {
-          this.sortingArray.splice(indexOfNode2 - 1, 0, element)
+          // from front to left
+          sortingArray.splice(indexOfNode2 - 1, 0, element)
         } else {
-          this.sortingArray.splice(indexOfNode2, 0, element)
+          // from end to left
+          sortingArray.splice(indexOfNode2, 0, element)
         }
       } else {
         if (indexOfNode1 < indexOfNode2) {
-          this.sortingArray.splice(indexOfNode2, 0, element)
+          // from front to right
+          sortingArray.splice(indexOfNode2, 0, element)
         } else {
-          this.sortingArray.splice(indexOfNode2 + 1, 0, element)
+          // from end to right
+          sortingArray.splice(indexOfNode2 + 1, 0, element)
         }
       }
-      this.cardInfo = this.sortingArray
+      this.cardInfo = sortingArray
 
       // setting places in config file ------------
       this.cardInfo.forEach(async (el, i) => {
@@ -576,22 +567,11 @@ export default {
   },
   // =============================================================================
   // initiate data extraction from router when component is created
-  async created() {
+  async created () {
     this.loading = true
     await this.$uci.load('summary')
     this.configSummary = this.$uci.sections('summary')
-    await this.getSystemInfo()
-    await this.getCpuUsage()
-    this.cardInfo.unshift(this.systemInfo)
-    // // network related info
-    await this.getNetworkInfo()
-    // // syslog related info
-    await this.getSystemLogs()
-    await this.getNetworkLogs()
-    await this.getWireless()
-    this.interfaces.forEach((nIntrf) => {
-      this.cardInfo.push(nIntrf)
-    })
+    await this.setCardInfo()
     // need separate uci load and new config, if new interface is added to cardInfo, place in UI depends on 'place' in config file
     await this.$uci.load('summary')
     this.configSummary = this.$uci.sections('summary')
@@ -600,19 +580,8 @@ export default {
     this.loading = false
   },
   watch: {
-    // deep: true,
-    'systemInfo.counter': {
-      handler() {
-        if (this.cardInfo.length > 0) {
-          const indexOfSystem = this.cardInfo.findIndex((obj) => {
-            return obj.name === 'System'
-          })
-          this.cardInfo.splice(indexOfSystem, 1, this.systemInfo)
-        }
-      }
-    },
     updFilters: {
-      async handler() {
+      async handler () {
         // setting new visablity in UI
         this.cardInfo.forEach((card) => {
           this.updFilters.forEach((filter) => {

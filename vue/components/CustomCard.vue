@@ -17,12 +17,11 @@
       class="card draggable"
       draggable="true"
       @dragstart="handleDragStart"
+      @dragend="dragEnd"
     >
       <template v-if="data.extraHeader" #extra>
         <slot>
-          <custom-badge
-            :extraHeader="data.extraHeader"
-          ></custom-badge>
+          <custom-badge :extraHeader="data.extraHeader"></custom-badge>
         </slot>
       </template>
       <div v-for="(content, i) in data.data" :key="i + 1000">
@@ -68,13 +67,28 @@ export default {
   },
   methods: {
     handleDragStart (e) {
-      this.$emit('draggedItem', { node: e.explicitOriginalTarget, event: e })
+      this.$emit('draggedItem', {
+        node: e.target.closest('.draggable'),
+        event: e
+      })
     },
     handleDrop (e) {
-      this.$emit('droppedItem', { node: e.explicitOriginalTarget, event: e })
+      this.$emit('droppedItem', {
+        node: e.target.closest('.draggable'),
+        event: e
+      })
     },
     testing (e) {
-      this.$emit('draggingOver', { node: e.explicitOriginalTarget, event: e })
+      this.$emit('draggingOver', {
+        node: e.target.closest('.draggable'),
+        event: e
+      })
+    },
+    dragEnd (e) {
+      this.$emit('dragEnd', {
+        node: e.target.closest('.draggable'),
+        event: e
+      })
     }
   }
 }

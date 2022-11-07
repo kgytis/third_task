@@ -1,9 +1,7 @@
 <template>
   <a-form v-model="formState">
     <a-form-item label="Activity type">
-      <!-- Reikia paduoti is kiekvieno card'o tam tikra identifier, kad butu galima filtruoti -->
-      <a-checkbox-group v-model="formState.type" :options="checkBoxProps">
-        <!-- <a-checkbox v-for="(filter, key) in filters" :key="key" :value="filter.name">{{filter.name}}</a-checkbox> -->
+      <a-checkbox-group v-model="formState.type" :options="checkBoxProps" class="checkboxGroup">
       </a-checkbox-group>
     </a-form-item>
   </a-form>
@@ -52,3 +50,12 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+
+.checkboxGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+</style>
